@@ -22,6 +22,14 @@ Outros arquivos no projeto incluem:
 
 - `vector_add_kernel.cl` e `vector_add_kernel_f.cl`: Kernels para testes adicionais com OpenCL.
 
+## Compilação
+
+Para compilar os programas deste projeto, utilize o GCC com a biblioteca OpenCL. Por exemplo, para compilar o `piopcl.c`, execute:
+
+```bash
+gcc piopcl.c -lOpenCL -o piopcl
+```
+
 ## Observações
 
 Embora o programa funcione na GPU, a precisão limitada do tipo `float` representa um desafio. Trabalhar com `double` em GPUs pode ser mais complexo e não foi o foco principal deste estudo. O objetivo principal foi explorar técnicas de paralelismo, e não necessariamente obter um cálculo preciso de π.
