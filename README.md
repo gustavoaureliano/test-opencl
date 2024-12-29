@@ -22,6 +22,26 @@ Outros arquivos no projeto incluem:
 
 - `vector_add_kernel.cl` e `vector_add_kernel_f.cl`: Kernels para testes adicionais com OpenCL.
 
+## Verificação de Compatibilidade com OpenCL
+
+Antes de compilar e executar os programas, é recomendável verificar se o seu sistema possui dispositivos compatíveis com OpenCL. Para isso, utilize o utilitário `clinfo`, que exibe informações sobre as plataformas e dispositivos OpenCL disponíveis no sistema.
+
+- **Instalação do clinfo**:
+
+  - **Arch Linux**:
+    ```bash
+    sudo pacman -S clinfo
+    ```
+
+  - **Ubuntu / Debian**:
+    ```bash
+    sudo apt install clinfo
+    ```
+
+- **Uso**:
+  ```bash
+  clinfo -l
+
 ## Compilação
 
 Para compilar os programas deste projeto, utilize o GCC com a biblioteca OpenCL. Por exemplo, para compilar o `piopcl.c`, execute:
