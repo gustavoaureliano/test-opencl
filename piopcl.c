@@ -23,7 +23,7 @@ int main(int argc, char* argv[]) {
 	// Get number of platforms
 	cl_uint numPlatforms = 0;
 	status = clGetPlatformIDs(0, NULL, &numPlatforms);
-	printf("numPlatforms: %d\n", numPlatforms);
+	printf("Number of Platforms: %d\n", numPlatforms);
 
 	// Allocate space for platforms
 	cl_platform_id *platforms = NULL;
@@ -34,8 +34,7 @@ int main(int argc, char* argv[]) {
 
 	char* selectedValue = NULL;
 
-	/*
-
+	printf("Available platforms:\n");
 	// Print platform names
 	for (int i = 0; i < numPlatforms; i++) {
 		size_t param_value_size = sizeof(char)*60; // Arbitrary value for the size
@@ -54,13 +53,22 @@ int main(int argc, char* argv[]) {
 			break;
 		}
 		char* platformName = (char*)param_value;
-		printf("platformName: %s\n", platformName);
+		printf("[%d]: %s\n", i, platformName);
 		free(param_value);
 	}
-
-	*/
-
 	int selectedPlatform = 0;
+	if (numPlatforms > 1) {
+		do {
+			printf("Select the desired platform\n: ");
+			scanf("%d", &selectedPlatform);
+			printf("Selected Platform: %d\n", selectedPlatform);
+			if (selectedPlatform < numPlatforms) {
+				break;
+			}
+			printf("Selected platform (%d) is invalid!\n", selectedPlatform);
+		} while (selectedPlatform >= numPlatforms);
+	}
+
 	// Get number of devices for given platform
 	cl_uint numDevices = 0;
 	status = clGetDeviceIDs(
