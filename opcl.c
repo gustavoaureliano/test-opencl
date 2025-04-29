@@ -38,20 +38,89 @@ int main(void) {
     source_size = fread( source_str, 1, MAX_SOURCE_SIZE, fp);
     fclose( fp );
  
-    // Get platform and device information
-    cl_platform_id platform_id = NULL;
-    cl_device_id device_id = NULL;   
-    cl_uint ret_num_devices;
-    cl_uint ret_num_platforms;
-    cl_int ret = clGetPlatformIDs(1, &platform_id, &ret_num_platforms);
-    ret = clGetDeviceIDs( platform_id, CL_DEVICE_TYPE_DEFAULT, 1, 
-            &device_id, &ret_num_devices);
+	// Setup OpenCL
+
+	cl_int ret; // for error checking
+	
+	// Get number of platforms
+	cl_uint numPlatforms = 0;
+	ret = clGetPlatformIDs(0, NULL, &numPlatforms);
+	printf("Number of Platforms: %d\n", numPlatforms);
+
+	// Allocate space for platforms
+	cl_platform_id *platforms = NULL;
+	platforms = (cl_platform_id*)malloc(numPlatforms*sizeof(cl_platform_id));
+
+	// Fill int the platforms
+	ret = clGetPlatformIDs(numPlatforms, platforms, NULL);
+
+	char* selectedValue = NULL;
+
+	printf("Available platforms:\n");
+	// Print platform names
+	for (int i = 0; i < numPlatforms; i++) {
+		size_t param_value_size = sizeof(char)*60; // Arbitrary value for the size
+		size_t param_value_size_ret; // Actual value will be here
+		void* param_value = malloc(param_value_size); // Allocate memory to store the name
+		clGetPlatformInfo(
+				platforms[i],
+				CL_PLATFORM_NAME,
+				param_value_size,
+				(char*)param_value,
+				&param_value_size_ret
+				);
+		//printf("actual size of value: %zu\n", param_value_size_ret);
+		if (param_value_size_ret <= 0) {
+			printf("error: no name returned");
+			break;
+		}
+		char* platformName = (char*)param_value;
+		printf("[%d]: %s\n", i, platformName);
+		free(param_value);
+	}
+	int selectedPlatform = 0;
+	if (numPlatforms > 1) {
+		do {
+			printf("Select the desired platform\n: ");
+			scanf("%d", &selectedPlatform);
+			printf("Selected Platform: %d\n", selectedPlatform);
+			if (selectedPlatform < numPlatforms) {
+				break;
+			}
+			printf("Selected platform (%d) is invalid!\n", selectedPlatform);
+		} while (selectedPlatform >= numPlatforms);
+	}
+
+	// Get number of devices for given platform
+	cl_uint numDevices = 0;
+	ret = clGetDeviceIDs(
+			platforms[selectedPlatform],
+			CL_DEVICE_TYPE_ALL, 0, NULL,
+			&numDevices
+			);
+	printf("numDevices: %d\n", numDevices);
+
+	// Allocate space for devices
+	cl_device_id *devices;
+	devices = (cl_device_id*)malloc(numDevices*sizeof(cl_device_id));
+
+	// Fill in the devices
+	ret = clGetDeviceIDs(
+			platforms[selectedPlatform],
+			CL_DEVICE_TYPE_ALL,
+			numDevices, devices,
+			NULL
+			);
+
+	// Create a context that includes all devices
+	cl_context context = clCreateContext(
+			NULL, numDevices, devices,
+			NULL, NULL, &ret
+			);
  
-    // Create an OpenCL context
-    cl_context context = clCreateContext( NULL, 1, &device_id, NULL, NULL, &ret);
- 
+	int selectedDevice = 0;
     // Create a command queue
-		cl_command_queue command_queue = clCreateCommandQueueWithProperties(context, device_id, 0, &ret);
+		cl_command_queue command_queue = clCreateCommandQueueWithProperties(context, devices[selectedDevice], 0, &ret);
  
     // Create memory buffers on the device for each vector 
     cl_mem a_mem_obj = clCreateBuffer(context, CL_MEM_READ_ONLY, 
@@ -72,7 +141,7 @@ int main(void) {
             (const char **)&source_str, (const size_t *)&source_size, &ret);
  
     // Build the program
-    ret = clBuildProgram(program, 1, &device_id, NULL, NULL, NULL);
+    ret = clBuildProgram(program, 1, &devices[selectedDevice], NULL, NULL, NULL);
  
     // Create the OpenCL kernel
     cl_kernel kernel = clCreateKernel(program, "vector_add", &ret);
