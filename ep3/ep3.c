@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #define rand2166() (rand2166f(-1))
 #define srand2166(seed) (rand2166f((seed)))
@@ -15,10 +16,13 @@ int rand2166f(int seed);
 void printpgm(uint8_t* pixels, int cols, int rows, uint8_t max_value);
 uint8_t* readpgm(char* filepath, int* cols, int* rows, uint8_t* max_value);
 uint8_t* encode(uint8_t* pixels, int key, int cols, int rows, uint8_t max_value);
-uint8_t* decode(uint8_t* pixels, int key, int cols, int rows, uint8_t max_value);
+void decode(uint8_t* pixels, int key, int num_pixels, uint8_t max_value, uint8_t* decoded);
+void decode_short(uint8_t* pixels, int key, int num_pixels, uint8_t max_value, uint8_t* decoded);
+uint8_t* decode_brute_force(uint8_t* pixels, int cols, int rows, uint8_t max_value, int max_key);
+double entropy(uint8_t* pixels, int num_pixels, uint8_t max_value, double* count_values);
 
 int main(int argc, char* argv[]) {
-	if (argc <= 2) {
+	if (argc <= 3) {
 		fprintf(stderr, "Too few arguments!\n");
 		return 1;
 	}
@@ -29,15 +33,17 @@ int main(int argc, char* argv[]) {
 	uint8_t max_value = 0;
 	uint8_t* pixels = readpgm(filepath, &cols, &rows, &max_value);
 	uint8_t* result = NULL;
+	int num_pixels = cols * rows;
 	switch (option) {
 		case 0:
 			result = encode(pixels, key, cols, rows, max_value);
 		break;
 		case 1:
-			result = decode(pixels, key, cols, rows, max_value);
+			result = (uint8_t*) malloc(sizeof(uint8_t) * num_pixels);
+			decode(pixels, key, num_pixels, max_value, result);
 		break;
 		case 2:
-			// decode brute force
+			result = decode_brute_force(pixels, cols, rows, max_value, key);
 		break;
 		default:
 			fprintf(stderr, "Invalid option!\n");
@@ -49,7 +55,46 @@ int main(int argc, char* argv[]) {
 		return 1;
 	}
 	printpgm(result, cols, rows, max_value);
+	free(pixels);
+	free(result);
 	return 0;
+}
+
+uint8_t* decode_brute_force(uint8_t* pixels, int cols, int rows, uint8_t max_value, int max_key) {
+	int key = 0;
+	int num_pixels = cols * rows;
+	double* freq_value = (double*) malloc(sizeof(double) * max_value+1);
+	uint8_t* decoded = (uint8_t*) malloc(sizeof(uint8_t) * num_pixels);
+	double min = 0;
+	double minKey = 0;
+	while (key <= max_key) {
+		decode_short(pixels, key, num_pixels, max_value, decoded);
+		double h = entropy(decoded, num_pixels, max_value, freq_value);
+		// // printf("key: %d, entropy: %f\n", key, h);
+		if (key == 0 || h < min) {
+			min = h;
+			minKey = key;
+		}
+		key++;
+	}
+	free(freq_value);
+	decode(pixels, minKey, num_pixels, max_value, decoded);
+	return decoded;
+}
+
+double entropy(uint8_t* pixels, int num_pixels, uint8_t max_value, double* freq_values) {
+	memset(freq_values, 0, sizeof(double) * (max_value+1));
+	double size = 1.0*num_pixels/200;
+	double valueAdd = 1.0 / size;
+	for (int i = 0; i < size; i++) {
+		freq_values[pixels[i]] += valueAdd;
+	}
+	double h = 0;
+	for (int i = 0; i <= max_value; i++) {
+		if (freq_values[i] > 0)
+			h += freq_values[i] * log(1.0/freq_values[i]);
+	}
+	return h;
 }
 
 uint8_t* encode(uint8_t* pixels, int key, int cols, int rows, uint8_t max_value) {
@@ -62,14 +107,18 @@ uint8_t* encode(uint8_t* pixels, int key, int cols, int rows, uint8_t max_value)
 	return encoded;
 }
 
-uint8_t* decode(uint8_t* pixels, int key, int cols, int rows, uint8_t max_value) {
-	int num_pixels = cols * rows;
+void decode(uint8_t* pixels, int key, int num_pixels, uint8_t max_value, uint8_t* decoded) {
 	srand2166(key);
-	uint8_t* decoded = (uint8_t*) malloc(sizeof(uint8_t) * num_pixels);
 	for (int i = 0; i < num_pixels; i++) {
 		decoded[i] = (pixels[i] - (rand2166() % (max_value + 1)) + (max_value +1)) % (max_value + 1);
 	}
-	return decoded;
+}
+
+void decode_short(uint8_t* pixels, int key, int num_pixels, uint8_t max_value, uint8_t* decoded) {
+	srand2166(key);
+	for (int i = 0; i < num_pixels/200; i++) {
+		decoded[i] = (pixels[i] - (rand2166() % (max_value + 1)) + (max_value +1)) % (max_value + 1);
+	}
 }
 
 uint8_t* readpgm(char* filepath, int* cols, int* rows, uint8_t* max_value) {
