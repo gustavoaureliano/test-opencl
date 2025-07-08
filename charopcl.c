@@ -1,10 +1,16 @@
+#include <errno.h>
+#include <stddef.h>
 #include <stdio.h>
+#include <string.h>
 #include <time.h>
 
 #define CL_TARGET_OPENCL_VERSION 200
 #include <CL/cl.h>
 
 #define MAX_SOURCE_SIZE 2048000000
+#define MAX_FILE_SIZE 4294967295
+
+#define KERNELPATH "../charkernel.cl"
 
 int main(int argc, char* argv[]) {
 	// Setup OpenCL
@@ -111,19 +117,39 @@ int main(int argc, char* argv[]) {
 	printf("\n");
 
 
-	char* filepath = "longtext.txt";
-	FILE* fileData = fopen(filepath, "r");
-	char* fileSource = malloc(MAX_SOURCE_SIZE);
-	size_t fileSize = fread(fileSource, sizeof(char), MAX_SOURCE_SIZE, fileData);
+	char* filepath = "../longtext.txt";
+	FILE* datafp = fopen(filepath, "r");
+	if (!datafp) {
+		fprintf(stderr, "Failed to read file '%s': %s\n" , filepath, strerror(errno));
+		return 1;
+	}
+	fseek(datafp, 0L, SEEK_END);
+	long datafilesize = ftell(datafp);
+	fseek(datafp, 0L, SEEK_SET);
+	printf("datafilesize: %ld\n", datafilesize);
+	if (datafilesize > MAX_FILE_SIZE) {
+		printf("WARNING! file size is way too big! \nThe GPU might not be able to handle values bigger than 32 bits can hold.\n");
+	}
+
+	char* fileSource = (char*) malloc(datafilesize);
+	size_t filebytesread = fread(fileSource, sizeof(char), datafilesize, datafp);
+	printf("filesbytesread: %ld\n", filebytesread);
+	if (datafilesize != filebytesread) {
+		fprintf(stderr, "Error reading file '%s': %s\n" , filepath, strerror(errno));
+		return 1;
+	}
+	fclose(datafp);
 	// printf("filesource:\n%s\n", fileSource);
-	printf("file size: (%zu) - end of source!\n", fileSize);
+	printf("file size: (%zu) - end of source!\n", filebytesread);
 	
 	// Allocate buffers
 	cl_mem bufMyChar = clCreateBuffer(
 			context,
-			CL_MEM_READ_ONLY,
-			fileSize,
-			NULL, &status
+			// Use CL_MEM_USE_HOST_PTR to work around GPU VRAM limitations
+			CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,
+			// CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, // This option actually copies the data to the GPU VRAM (Should be way faster)
+			filebytesread,
+			fileSource, &status
 			);
 	cl_mem bufB = clCreateBuffer(
 			context, 
@@ -133,20 +159,30 @@ int main(int argc, char* argv[]) {
 			);
 
 	// Copy data to device right now (CL_TRUE)
-	status = clEnqueueWriteBuffer(
-			cmdQueue, bufMyChar, CL_TRUE, 0, fileSize,
-			fileSource, 0, NULL, NULL
-			);
-	//
+	// Not needed with CL_MEM_COPY_HOST_PTR or CL_MEM_USE_HOST_PTR
+	// status = clEnqueueWriteBuffer(
+	// 		cmdQueue, bufMyChar, CL_TRUE, 0, filebytesread,
+	// 		fileSource, 0, NULL, NULL
+	// 		);
+
 	// Read kernel source code
-	FILE* file = fopen("charkernel.cl", "r");
-	if (!file) {
-		printf("error: no such kernel\n");
-		return 0;
+	FILE* kernelfp = fopen(KERNELPATH, "r");
+	if (!kernelfp) {
+          fprintf(stderr, "Failed to read kernel '%s': %s\n", KERNELPATH,
+                  strerror(errno));
+          return 1;
+        }
+	fseek(kernelfp, 0L, SEEK_END);
+	long kernelsize = ftell(kernelfp);
+	fseek(kernelfp, 0L, SEEK_SET);
+
+	char* kernelSouce = (char*) malloc(kernelsize);
+	size_t bytesread = fread(kernelSouce, sizeof(char), kernelsize, kernelfp);
+	if (kernelsize != bytesread) {
+		fprintf(stderr, "Error reading the kernel '%s': %s\n" , KERNELPATH, strerror(errno));
+		return 1;
 	}
-	char* kernelSouce = malloc(MAX_SOURCE_SIZE);
-	size_t sourceSize = fread(kernelSouce, sizeof(char), MAX_SOURCE_SIZE, file);
-	fclose(file);
+	fclose(kernelfp);
 
 	// printf("%s", kernelSouce); // print source code
 	// printf("size: (%zu) - end of source!\n", sourceSize);
@@ -158,11 +194,20 @@ int main(int argc, char* argv[]) {
 			NULL, &status
 			);
 
-	// Build (compile) the program for the devices
-	status = clBuildProgram(
-			program, 1, &devices[0],
-			NULL, NULL, NULL
-			);
+	cl_uint addr_bits = 0;
+	clGetDeviceInfo(devices[0],
+			CL_DEVICE_ADDRESS_BITS,
+			sizeof(addr_bits),
+			&addr_bits,
+			NULL);
+
+	// Get build log
+	// size_t log_size;
+	// clGetProgramBuildInfo(program, devices[0], CL_PROGRAM_BUILD_LOG, 0, NULL, &log_size);
+	// char *log = (char *) malloc(log_size);
+	// clGetProgramBuildInfo(program, devices[0], CL_PROGRAM_BUILD_LOG, log_size, log, NULL);
+	// printf("Build log:\n%s\n", log);
+	// free(log);
 
 	// Create the kernel
     cl_kernel kernel = clCreateKernel(program, "myKernel", &status);
@@ -173,7 +218,7 @@ int main(int argc, char* argv[]) {
 
 	// Define an index space of work-itens for execution
 	// A work-group size is not required, but can be used
-	size_t indexSpaceSize[3] = {fileSize, 1, 1};
+	size_t indexSpaceSize[3] = {filebytesread, 1, 1};
 	// size_t indexSpaceSize[1] = {total};
 	// size_t workGroupSize[1] = {1};
 	size_t workGroupSize[3] = {64, 1, 1};
@@ -213,8 +258,8 @@ int main(int argc, char* argv[]) {
 
 
     t = clock(); 
-	uint64_t count = 0;
-	for (int i = 0; i < fileSize; i++) {
+	int count = 0;
+	for (size_t i = 0; i < filebytesread; i++) {
 		if (fileSource[i] == 'e') {
 			count++;
 		}
@@ -222,7 +267,7 @@ int main(int argc, char* argv[]) {
 	t = clock() - t;
 	double timeTakenCPU = ((double)t)/CLOCKS_PER_SEC;
 	printf("cpu timetaken: %f miliseconds\n", timeTakenCPU*1000);
-	printf("output: %lu\n", count);
+	printf("output: %d\n", count);
 
 	printf("comparing: cpuTime/gpuTime= %f", timeTakenCPU/timeTakenGPU);
 
