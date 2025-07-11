@@ -7,10 +7,11 @@
 #define CL_TARGET_OPENCL_VERSION 200
 #include <CL/cl.h>
 
-#define MAX_SOURCE_SIZE 2048000000
+// #define MAX_SOURCE_SIZE 2048000000
+#define MAX_SOURCE_SIZE 3072000000
 #define MAX_FILE_SIZE 4294967295
 
-#define KERNELPATH "../charkernel.cl"
+#define KERNELPATH "charkernel.cl"
 
 int main(int argc, char* argv[]) {
 	// Setup OpenCL
@@ -101,23 +102,8 @@ int main(int argc, char* argv[]) {
 			0, &status
 			);
 
-	// Create Data
-	int total = 16;
-	size_t dataSize = sizeof(int)*total;
-	int* A = malloc(dataSize);
-	for (int i = 0; i < total; i++) {
-		A[i] = i;
-	}
 
-	// Print Data Input
-	printf("Input: ");
-	for (int i = 0; i < total; i++) {
-		printf("%d ", A[i]);
-	}
-	printf("\n");
-
-
-	char* filepath = "../longtext.txt";
+	char* filepath = "longtext.txt";
 	FILE* datafp = fopen(filepath, "r");
 	if (!datafp) {
 		fprintf(stderr, "Failed to read file '%s': %s\n" , filepath, strerror(errno));
@@ -127,14 +113,15 @@ int main(int argc, char* argv[]) {
 	long datafilesize = ftell(datafp);
 	fseek(datafp, 0L, SEEK_SET);
 	printf("datafilesize: %ld\n", datafilesize);
-	if (datafilesize > MAX_FILE_SIZE) {
-		printf("WARNING! file size is way too big! \nThe GPU might not be able to handle values bigger than 32 bits can hold.\n");
-	}
+	// if (datafilesize > MAX_FILE_SIZE) {
+	// 	printf("WARNING! file size is way too big! \nThe GPU might not be able to handle values bigger than 32 bits can hold.\n");
+	// }
 
 	char* fileSource = (char*) malloc(datafilesize);
-	size_t filebytesread = fread(fileSource, sizeof(char), datafilesize, datafp);
+	size_t filebytesread = fread(fileSource, sizeof(char), MAX_SOURCE_SIZE, datafp);
 	printf("filesbytesread: %ld\n", filebytesread);
-	if (datafilesize != filebytesread) {
+	// if (datafilesize != filebytesread) {
+	if (MAX_SOURCE_SIZE != filebytesread) {
 		fprintf(stderr, "Error reading file '%s': %s\n" , filepath, strerror(errno));
 		return 1;
 	}
@@ -146,8 +133,9 @@ int main(int argc, char* argv[]) {
 	cl_mem bufMyChar = clCreateBuffer(
 			context,
 			// Use CL_MEM_USE_HOST_PTR to work around GPU VRAM limitations
-			CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,
-			// CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, // This option actually copies the data to the GPU VRAM (Should be way faster)
+			// CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,
+			CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, // This option actually copies the data to the GPU VRAM (Should be way faster)
+			// CL_MEM_READ_ONLY,
 			filebytesread,
 			fileSource, &status
 			);
@@ -185,7 +173,7 @@ int main(int argc, char* argv[]) {
 	fclose(kernelfp);
 
 	// printf("%s", kernelSouce); // print source code
-	// printf("size: (%zu) - end of source!\n", sourceSize);
+	// printf("size: (%zu) - end of source!\n", kernelsize);
 	
 	// Create a program with source code
 	cl_program program = clCreateProgramWithSource(
@@ -194,12 +182,11 @@ int main(int argc, char* argv[]) {
 			NULL, &status
 			);
 
-	cl_uint addr_bits = 0;
-	clGetDeviceInfo(devices[0],
-			CL_DEVICE_ADDRESS_BITS,
-			sizeof(addr_bits),
-			&addr_bits,
-			NULL);
+	// Build (compile) the program for the devices
+	status = clBuildProgram(
+			program, 1, &devices[0],
+			NULL, NULL, NULL
+			);
 
 	// Get build log
 	// size_t log_size;
@@ -235,6 +222,13 @@ int main(int argc, char* argv[]) {
 			0, NULL, NULL
 			);
 
+	// Block host execution until everything is done
+	clFlush(cmdQueue);
+	clFinish(cmdQueue);
+
+	t = clock() - t;
+	double timeTakenGPU = ((double)t)/(CLOCKS_PER_SEC);
+
 	// Copy data from device
 	int B = 0; // Allocate memory to copy data
 	status = clEnqueueReadBuffer(
@@ -243,19 +237,12 @@ int main(int argc, char* argv[]) {
 			0, NULL, NULL
 			);
 
-	t = clock() - t;
-	double timeTakenGPU = ((double)t)/(CLOCKS_PER_SEC);
 
 	// Print Data Output
 	printf("gpu timetaken: %f miliseconds\n", timeTakenGPU*1000);
 	printf("Output: ");
 	printf("%d ", B);
 	printf("\n");
-	
-	// Block host execution until everything is done
-	clFlush(cmdQueue);
-	clFinish(cmdQueue);
-
 
     t = clock(); 
 	int count = 0;
@@ -282,7 +269,6 @@ int main(int argc, char* argv[]) {
 
 	free(platforms);
 	free(devices);
-	free(A);
 	free(kernelSouce);
 
 	return 0;
