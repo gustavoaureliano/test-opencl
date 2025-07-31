@@ -153,6 +153,7 @@ uint8_t* readpgm(char* filepath, int* cols, int* rows, uint8_t* max_value) {
 		}
 		pixels[i] = num;
 	}
+	fclose(fp);
 	return pixels;
 }
 
