@@ -21,8 +21,8 @@ cl_kernel compile_kernel(char* source_path, cl_device_id device, cl_context cont
 	long kernelsize = ftell(kernelfp);
 	fseek(kernelfp, 0L, SEEK_SET);
 
-	char* kernelSouce = (char*) malloc(kernelsize);
-	size_t bytesread = fread(kernelSouce, sizeof(char), kernelsize, kernelfp);
+	char* kernelSource = (char*) malloc(kernelsize);
+	size_t bytesread = fread(kernelSource, sizeof(char), kernelsize, kernelfp);
 	if (kernelsize != bytesread) {
 		fprintf(stderr, "Error reading the kernel '%s': %s\n" , source_path, strerror(errno));
 		exit(1);
@@ -36,11 +36,11 @@ cl_kernel compile_kernel(char* source_path, cl_device_id device, cl_context cont
 	cl_uint number_of_sources = 1;
 	cl_program program = clCreateProgramWithSource(
 			context, number_of_sources,
-			(const char**)&kernelSouce,
+			(const char**)&kernelSource,
 			NULL, &status
 			);
 	handle_unknown_error(status);
-	free(kernelSouce);
+	free(kernelSource);
 
 	// Build (compile) the program for the devices
 	cl_uint number_of_devices = 1;
